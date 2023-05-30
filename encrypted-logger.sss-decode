@@ -1,0 +1,32 @@
+#!/bin/sh
+
+if [ ! -s "$1" ]; then
+    echo "No private key file supplied" >&2
+    exit 1
+fi
+
+for key in "$@"; do
+    tf=$(mktemp /tmp/keytemp.XXXXXXXX)
+
+    if [ ! -f "$tf" ]; then
+        echo "Unable to create temporary key file" >&2
+        exit 1
+    fi
+
+    cat "$key" > "$tf"
+    ssh-keygen -p -N "" -m pem -f "$tf" >/dev/null
+
+    if [ $? -a -s "$tf" ]; then
+        tflist="$tflist$tf "
+    fi
+done
+
+while read l; do
+    for tf in $tflist; do
+        echo "$l" | base64 -d | openssl pkeyutl -decrypt -inkey "$tf" 2>/dev/null
+    done
+done
+
+for tf in $tflist; do
+    rm -f "$tf"
+done

@@ -1,0 +1,22 @@
+#!/bin/perl
+
+use strict;
+
+my %e2i;
+
+while (my $line = <STDIN>)  {
+    chomp($line);
+    if (index($line, "[LEA-REV]:") != -1) {
+        my ($dst) = $line =~ m/DST=([^ ]+)/;
+        my ($src) = $line =~ m/SRC=([^ ]+)/;
+        my ($ext) = $line =~ m/EXT=([^ ]+)/;
+        if ((not defined $ARGV[0]) || ($ARGV[0] eq $ext)) {
+            $e2i{$dst} = "SRC=$src EXT=$ext";
+        }
+    } elsif ((index($line, "[LEA-DIR]:") != -1) && (index($line, " kernel: ") != -1)) {
+        my ($r) = $line =~ s/SRC=([^ ]+) //r;
+        if (defined $e2i{$1}) {
+            print $r, $e2i{$1}, "\n";
+        }
+    }
+}

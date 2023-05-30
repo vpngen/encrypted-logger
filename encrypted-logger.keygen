@@ -1,0 +1,43 @@
+#!/bin/bash
+
+d=$(dirname "$0")
+
+# $1 - pubkey list file
+# $2 - number of mandatory Shamir parts
+# $3 - output file with Shamir secrets each one encrypted with RSA
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <pubkey list file> <total number of Shamir parts> <number of mandatory Shamir parts> <output file>" >&2
+    exit 1
+fi
+
+if [[ "$2" -lt 1 ]]; then
+    echo "Incorrect number of mandatory Shamir parts, should be at least 1" >&2
+    exit 1
+fi
+
+if [ -z "$1" ]; then
+    echo "No pubkey list file" >&2
+    exit 1
+else
+    ks=$(cat "$1")
+    ts=$(echo "$ks" | egrep '^ssh-rsa ' | wc -l)
+
+    if [[ "$ts" -lt "$2" ]]; then
+        echo "The number of public keys is less than total number of Shamir parts" >&2
+        exit 1
+    fi
+fi
+
+if [ -z "$3" -o ! -z "`touch \"$3\" 2>&1`" ]; then
+    echo "Output file has wrong name or is not writable" >&2
+    exit 1
+fi
+
+if [ ! -x "$d/shamir" ]; then
+    echo "Shamir shared secret executable not found, please build from https://github.com/fletcher/c-sss and place it in $d" >&2
+    exit 1
+fi
+
+openssl rand -base64 32 | tee >($d/shamir "$ts" "$2" | grep "\S" | xargs -I {} /bin/bash -c \
+'echo "{}" | openssl pkeyutl -encrypt -pubin -inkey <(ssh-keygen -e -f <(echo "'"$ks"'" | tail -n +$(echo '"{}"' | head -c 2) | head -1) -m PKCS8) | base64 -w 0 ; echo' > "$3")

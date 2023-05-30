@@ -1,0 +1,24 @@
+[Unit]
+Description=Encrypted Logger Service
+After=network.target rsyslog.service
+
+[Service]
+Environment=ENCRYPTED_LOGGER_KEYGEN=/usr/local/bin/encrypted-logger.keygen
+Environment=ENCRYPTED_LOGGER_RSA_KEYFILE=/etc/encrypted-logger/authorities.pub
+Environment=ENCRYPTED_LOGGER_CONSENSUS=2
+Environment=ENCRYPTED_LOGGER_PIPE_FILE=/var/run/encrypted-logger.pipe
+
+ExecStartPre=/bin/bash -c 'test -p ${ENCRYPTED_LOGGER_PIPE_FILE} || mkfifo -m 666 ${ENCRYPTED_LOGGER_PIPE_FILE}'
+ExecStartPre=/usr/bin/systemctl restart rsyslog
+ExecStartPre=/bin/bash -c 'test -d /var/log/encrypted-logger/$(date +%%Y-%%m-%%d) || mkdir -p /var/log/encrypted-logger/$(date +%%Y-%%m-%%d)'
+ExecStartPre=/bin/bash -c '${ENCRYPTED_LOGGER_KEYGEN} ${ENCRYPTED_LOGGER_RSA_KEYFILE} ${ENCRYPTED_LOGGER_CONSENSUS} /dev/null'
+
+## The other option is to use: aespipe -e AES256 -p3 3<key.file
+ExecStart=/bin/bash -c 'while [ ! -f ${ENCRYPTED_LOGGER_PIPE_FILE}.restart ]; do cat ${ENCRYPTED_LOGGER_PIPE_FILE} ; done | zstd -qq -c --single-thread | openssl enc -aes-256-cbc -pbkdf2 -pass file:<(${ENCRYPTED_LOGGER_KEYGEN} ${ENCRYPTED_LOGGER_RSA_KEYFILE} ${ENCRYPTED_LOGGER_CONSENSUS} /var/log/encrypted-logger/$(date +%%Y-%%m-%%d)/key.sss.rsa.$(date +%%s)) > /var/log/encrypted-logger/$(date +%%Y-%%m-%%d)/syslog.zstd.aes.$(date +%%s)'
+ExecStop=/bin/bash -c 'touch ${ENCRYPTED_LOGGER_PIPE_FILE}.restart ; killall -HUP rsyslogd ; test -p ${ENCRYPTED_LOGGER_PIPE_FILE} && echo -n > ${ENCRYPTED_LOGGER_PIPE_FILE} ; rm -f ${ENCRYPTED_LOGGER_PIPE_FILE}.restart ${ENCRYPTED_LOGGER_PIPE_FILE} 2>/dev/null'
+
+Type=simple
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
